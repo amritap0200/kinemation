@@ -2,6 +2,24 @@ import cv2
 import numpy as np
 import os
 
+# MediaPipe Pose has 33 landmarks. These pairs define which joints to connect.
+POSE_PAIRS = [
+    [0, 1],   [1, 2],   [2, 3],   [3, 7],   
+    [0, 4],   [4, 5],   [5, 6],   [6, 8],    
+    [9, 10],                                   
+    [11, 12],                                  
+    [11, 13], [13, 15],                        
+    [12, 14], [14, 16],                        
+    [15, 17], [15, 19], [15, 21],              
+    [16, 18], [16, 20], [16, 22],              
+    [11, 23], [12, 24],                        
+    [23, 24],                                  
+    [23, 25], [25, 27],                        
+    [24, 26], [26, 28],                        
+    [27, 29], [29, 31],                        
+    [28, 30], [30, 32],                       
+]
+
 class FakeLandmark:
     def __init__(self, x, y):
         self.x = x
@@ -52,17 +70,18 @@ def draw_stick_figure(img_processed, landmarks):
         cv2.circle(canvas, point, 8, (0, 255, 255), -1)
 
     # Draw the bones
-    if len(pixel_points) >= 4:
-        cv2.line(canvas, pixel_points[0], pixel_points[1], (0, 255, 0), 3) 
-        cv2.line(canvas, pixel_points[0], pixel_points[2], (0, 255, 0), 3) 
-        cv2.line(canvas, pixel_points[2], pixel_points[3], (0, 255, 0), 3) 
+    for pair in POSE_PAIRS:
+        idx_a, idx_b = pair
+        if idx_a < len(pixel_points) and idx_b < len(pixel_points):
+            if pixel_points[idx_a] is not None and pixel_points[idx_b] is not None:
+                cv2.line(canvas, pixel_points[idx_a], pixel_points[idx_b], (0, 255, 0), 3)
 
-    # We stack them horizontally to easily compare
     comparison = np.hstack([img_processed, canvas])
     
     return canvas, comparison
 
 def save_and_display(canvas, comparison, output_path):
+
     cv2.imwrite(output_path, canvas)
     print(f"Stick figure saved to: {output_path}")
 
@@ -82,12 +101,41 @@ if __name__ == "__main__":
     processed, original = preprocess_image(test_img_path)
     
     if processed is not None:
-        # Generate dummy landmarks
+        # These are fake positions that roughly form a stick figure
         test_landmarks = [
-            FakeLandmark(0.5, 0.2),  
-            FakeLandmark(0.4, 0.4),  
-            FakeLandmark(0.6, 0.4),  
-            FakeLandmark(0.6, 0.6),  
+            FakeLandmark(0.50, 0.12),  # 0  nose
+            FakeLandmark(0.51, 0.11),  # 1  left eye inner
+            FakeLandmark(0.52, 0.11),  # 2  left eye
+            FakeLandmark(0.53, 0.11),  # 3  left eye outer
+            FakeLandmark(0.49, 0.11),  # 4  right eye inner
+            FakeLandmark(0.48, 0.11),  # 5  right eye
+            FakeLandmark(0.47, 0.11),  # 6  right eye outer
+            FakeLandmark(0.54, 0.12),  # 7  left ear
+            FakeLandmark(0.46, 0.12),  # 8  right ear
+            FakeLandmark(0.51, 0.14),  # 9  mouth left
+            FakeLandmark(0.49, 0.14),  # 10 mouth right
+            FakeLandmark(0.58, 0.28),  # 11 left shoulder
+            FakeLandmark(0.42, 0.28),  # 12 right shoulder
+            FakeLandmark(0.64, 0.40),  # 13 left elbow
+            FakeLandmark(0.36, 0.40),  # 14 right elbow
+            FakeLandmark(0.68, 0.52),  # 15 left wrist
+            FakeLandmark(0.32, 0.52),  # 16 right wrist
+            FakeLandmark(0.70, 0.54),  # 17 left pinky
+            FakeLandmark(0.30, 0.54),  # 18 right pinky
+            FakeLandmark(0.69, 0.53),  # 19 left index
+            FakeLandmark(0.31, 0.53),  # 20 right index
+            FakeLandmark(0.71, 0.52),  # 21 left thumb
+            FakeLandmark(0.29, 0.52),  # 22 right thumb
+            FakeLandmark(0.55, 0.58),  # 23 left hip
+            FakeLandmark(0.45, 0.58),  # 24 right hip
+            FakeLandmark(0.56, 0.72),  # 25 left knee
+            FakeLandmark(0.44, 0.72),  # 26 right knee
+            FakeLandmark(0.57, 0.88),  # 27 left ankle
+            FakeLandmark(0.43, 0.88),  # 28 right ankle
+            FakeLandmark(0.58, 0.90),  # 29 left heel
+            FakeLandmark(0.42, 0.90),  # 30 right heel
+            FakeLandmark(0.59, 0.92),  # 31 left foot index
+            FakeLandmark(0.41, 0.92),  # 32 right foot index
         ]
 
         # Test drawing
