@@ -2,22 +2,33 @@ import cv2
 import numpy as np
 import os
 
-# MediaPipe Pose has 33 landmarks. These pairs define which joints to connect.
 POSE_PAIRS = [
-    [0, 1],   [1, 2],   [2, 3],   [3, 7],   
-    [0, 4],   [4, 5],   [5, 6],   [6, 8],    
-    [9, 10],                                   
-    [11, 12],                                  
-    [11, 13], [13, 15],                        
-    [12, 14], [14, 16],                        
-    [15, 17], [15, 19], [15, 21],              
-    [16, 18], [16, 20], [16, 22],              
-    [11, 23], [12, 24],                        
-    [23, 24],                                  
-    [23, 25], [25, 27],                        
-    [24, 26], [26, 28],                        
-    [27, 29], [29, 31],                        
-    [28, 30], [30, 32],                       
+    [0, 1],   [1, 2],   [2, 3],   [3, 7],
+    [0, 4],   [4, 5],   [5, 6],   [6, 8],
+    [9, 10],
+    [11, 12],
+    [11, 13], [13, 15],
+    [12, 14], [14, 16],
+    [15, 17], [15, 19], [15, 21],
+    [16, 18], [16, 20], [16, 22],
+    [23, 24],
+    [23, 25], [25, 27],
+    [24, 26], [26, 28],
+    [27, 29], [29, 31],
+    [28, 30], [30, 32],
+]
+
+PERSON_COLORS = [
+    (0, 255, 0),
+    (255, 0, 0),
+    (0, 0, 255),
+    (255, 255, 0),
+    (255, 0, 255),
+    (0, 255, 255),
+    (128, 0, 255),
+    (255, 128, 0),
+    (0, 255, 128),
+    (128, 255, 0),
 ]
 
 class FakeLandmark:
@@ -51,33 +62,41 @@ def preprocess_image(img_path, max_dim=800):
     
     return img_processed, img
 
-def draw_stick_figure(img_processed, landmarks):
+def draw_stick_figure(img_processed, landmarks, color=(0, 255, 0), canvas=None):
 
     image_h, image_w = img_processed.shape[:2]
 
-    # Create a blank black canvas, same size as the processed image
-    canvas = np.zeros((image_h, image_w, 3), dtype=np.uint8)
+    if canvas is None:
+        canvas = np.zeros((image_h, image_w, 3), dtype=np.uint8)
 
-    # Calculate exact pixel coordinates from the normalized MediaPipe points
     pixel_points = []
     for landmark in landmarks:
         pixel_x = int(landmark.x * image_w)
         pixel_y = int(landmark.y * image_h)
         pixel_points.append((pixel_x, pixel_y))
 
-    # Draw the joints 
-    for point in pixel_points:
-        cv2.circle(canvas, point, 8, (0, 255, 255), -1)
-
-    # Draw the bones
     for pair in POSE_PAIRS:
         idx_a, idx_b = pair
         if idx_a < len(pixel_points) and idx_b < len(pixel_points):
             if pixel_points[idx_a] is not None and pixel_points[idx_b] is not None:
-                cv2.line(canvas, pixel_points[idx_a], pixel_points[idx_b], (0, 255, 0), 3)
+                cv2.line(canvas, pixel_points[idx_a], pixel_points[idx_b], color, 2)
+
+    if len(pixel_points) >= 25:
+        mid_shoulder = (
+            (pixel_points[11][0] + pixel_points[12][0]) // 2,
+            (pixel_points[11][1] + pixel_points[12][1]) // 2
+        )
+        mid_hip = (
+            (pixel_points[23][0] + pixel_points[24][0]) // 2,
+            (pixel_points[23][1] + pixel_points[24][1]) // 2
+        )
+        cv2.line(canvas, mid_shoulder, mid_hip, color, 2)
+
+    for point in pixel_points:
+        cv2.circle(canvas, point, 4, color, -1)
 
     comparison = np.hstack([img_processed, canvas])
-    
+
     return canvas, comparison
 
 def save_and_display(canvas, comparison, output_path):
