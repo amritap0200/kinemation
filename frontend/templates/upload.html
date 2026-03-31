@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Video - Kinemation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+            background-color: #000000;
+            color: #FFFFFF;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 48px;
+        }
+        .back-btn {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px 24px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .back-btn:hover {
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+        }
+        .page-title {
+            font-size: 32px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #FF1CF7 0%, #00F0FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .spacer { width: 100px; }
+        
+                .drop-zone {
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 16px;
+            padding: 80px 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 32px;
+        }
+        .drop-zone:hover {
+            border-color: #00F0FF;
+            background: rgba(0, 240, 255, 0.05);
+        }
+        .drop-zone.dragover {
+            border-color: #00F0FF;
+            background: rgba(0, 240, 255, 0.1);
+        }
+        .drop-icon { font-size: 56px; margin-bottom: 20px; }
+        .drop-text { font-size: 20px; color: rgba(255,255,255,0.7); margin-bottom: 8px; }
+        .drop-subtext { font-size: 14px; color: rgba(255,255,255,0.4); }
+        
+                .file-input { display: none; }
+        
+                .file-list { margin-bottom: 32px; }
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        .file-name { font-size: 16px; }
+        .file-status { color: #10B981; }
+        
+                .process-btn {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+            padding: 16px 48px;
+            font-size: 16px;
+            font-family: Calibri, sans-serif;
+            font-weight: 600;
+            color: #000000;
+            background: linear-gradient(90deg, #FF1CF7 0%, #00F0FF 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .process-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 240, 255, 0.3);
+        }
+        .process-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+                .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn">← Back to Home</a>
+            <h1 class="page-title">Upload Video</h1>
+            <div class="spacer"></div>
+        </div>
+        
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-icon">📁</div>
+            <div class="drop-text">Drag and drop video files here</div>
+            <div class="drop-subtext">or click to browse • Supports MP4, AVI, MOV, MKV</div>
+        </div>
+        <input type="file" class="file-input" id="fileInput" accept=".mp4,.avi,.mov,.mkv" multiple>
+        
+        <div class="file-list hidden" id="fileList"></div>
+        
+        <button class="process-btn hidden" id="processBtn" disabled>Process Video</button>
+    </div>
+    
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const processBtn = document.getElementById('processBtn');
+        let uploadedFiles = [];
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+        
+        function handleFiles(files) {
+            for (let file of files) {
+                if (!uploadedFiles.find(f => f.name === file.name)) {
+                    uploadedFiles.push(file);
+                }
+            }
+            updateFileList();
+        }
+        
+        function updateFileList() {
+            if (uploadedFiles.length > 0) {
+                fileList.classList.remove('hidden');
+                processBtn.classList.remove('hidden');
+                processBtn.disabled = false;
+                
+                fileList.innerHTML = uploadedFiles.map(f => `
+                    <div class="file-item">
+                        <span class="file-name">📄 ${f.name}</span>
+                        <span class="file-status">✓ Ready</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        processBtn.addEventListener('click', () => {
+            alert('TODO: Process video with pipeline_3d.py');
+        });
+    </script>
+</body>
+</html>
