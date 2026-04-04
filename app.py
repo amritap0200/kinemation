@@ -302,15 +302,15 @@ if __name__ == '__main__':
     ║  Starting server at: http://localhost:8080                ║
     ║                                                           ║
     ║  Pages:                                                   ║
-    ║    /         - Home (landing page)                         ║
-    ║    /upload   - Video upload + processing                   ║
-    ║    /webcam   - Webcam recording + processing               ║
+    ║    /         - Home (landing page)                        ║
+    ║    /upload   - Video upload + processing                  ║
+    ║    /webcam   - Webcam recording + processing              ║
     ║                                                           ║
     ║  API:                                                     ║
-    ║    POST /api/upload   - Upload video for processing        ║
-    ║    POST /api/webcam   - Upload webcam recording            ║
-    ║    GET  /api/status/  - Check processing status            ║
-    ║    GET  /api/download/ - Download processed result         ║
+    ║    POST /api/upload   - Upload video for processing       ║
+    ║    POST /api/webcam   - Upload webcam recording           ║
+    ║    GET  /api/status/  - Check processing status           ║
+    ║    GET  /api/download/ - Download processed result        ║
     ╚═══════════════════════════════════════════════════════════╝
     """)
 
