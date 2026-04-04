@@ -57,13 +57,12 @@ def update_job(job_id, **kwargs):
         jobs[job_id].update(kwargs)
 
 
-def run_pipeline(job_id, input_path, output_path):
+def run_pipeline(job_id, input_path, output_path, render_mode='side_by_side', bg_color='#000000', use_video_bg=False):
     """Run the 3D pose estimation pipeline in a background thread."""
     try:
         update_job(job_id, status='processing', progress=0.0,
                    message='Loading models...', phase='Phase 1/4: Setup')
 
-        # Import backend pipeline (deferred to avoid slow startup)
         from main import PoseEstimationPipeline
 
         pipeline = PoseEstimationPipeline(
@@ -75,19 +74,19 @@ def run_pipeline(job_id, input_path, output_path):
                    message='Models loaded. Starting processing...',
                    phase='Phase 1/4: Extracting 2D poses')
 
-        # Progress callback for real-time status updates
         def on_progress(progress, message, phase):
             update_job(job_id, progress=progress, message=message, phase=phase)
 
-        # Run the full processing pipeline
         pipeline.process_video(
             video_path=input_path,
             output_path=output_path,
             smoothing_sigma=2.0,
-            render_mode='side_by_side',
+            render_mode=render_mode,
             export_npy=False,
             show_progress=False,
-            progress_callback=on_progress
+            progress_callback=on_progress,
+            bg_color=bg_color,
+            use_video_bg=use_video_bg
         )
 
         pipeline.close()
@@ -134,24 +133,24 @@ def api_upload():
     if video.filename == '':
         return jsonify({'success': False, 'error': 'Empty filename'}), 400
 
-    # Validate extension
     allowed_ext = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
     ext = os.path.splitext(video.filename)[1].lower()
     if ext not in allowed_ext:
         return jsonify({'success': False,
                         'error': f'Unsupported format: {ext}. Use MP4, AVI, MOV, MKV, or WEBM.'}), 400
 
-    # Save uploaded file
+    render_mode = request.form.get('mode', 'side_by_side')
+    bg_color = request.form.get('bg_color', '#000000')
+    use_video_bg = request.form.get('use_video_bg', 'false').lower() == 'true'
+
     job_id = str(uuid.uuid4())[:8]
     safe_name = f"{job_id}_{video.filename}"
     input_path = os.path.join(UPLOAD_FOLDER, safe_name)
     video.save(input_path)
 
-    # Determine output path
     output_name = f"{job_id}_output.mp4"
     output_path = os.path.join(OUTPUT_FOLDER, output_name)
 
-    # Initialize job and start processing thread
     jobs[job_id] = {
         'status': 'processing',
         'progress': 0.0,
@@ -161,7 +160,11 @@ def api_upload():
         'error': None
     }
 
-    thread = threading.Thread(target=run_pipeline, args=(job_id, input_path, output_path), daemon=True)
+    thread = threading.Thread(
+        target=run_pipeline,
+        args=(job_id, input_path, output_path, render_mode, bg_color, use_video_bg),
+        daemon=True
+    )
     thread.start()
 
     return jsonify({'success': True, 'job_id': job_id})
@@ -175,9 +178,11 @@ def api_webcam():
 
     video = request.files['video']
 
-    # Save recording
+    render_mode = request.form.get('mode', 'side_by_side')
+    bg_color = request.form.get('bg_color', '#000000')
+    use_video_bg = request.form.get('use_video_bg', 'false').lower() == 'true'
+
     job_id = str(uuid.uuid4())[:8]
-    # Webcam recordings come as webm from the browser
     ext = os.path.splitext(video.filename)[1].lower() if video.filename else '.webm'
     if not ext:
         ext = '.webm'
@@ -185,7 +190,6 @@ def api_webcam():
     input_path = os.path.join(UPLOAD_FOLDER, safe_name)
     video.save(input_path)
 
-    # Convert webm to mp4 if needed (OpenCV can't always read webm)
     actual_input = input_path
     if ext == '.webm':
         mp4_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_webcam.mp4")
@@ -193,11 +197,9 @@ def api_webcam():
         if converted:
             actual_input = mp4_path
 
-    # Determine output path
     output_name = f"{job_id}_webcam_output.mp4"
     output_path = os.path.join(OUTPUT_FOLDER, output_name)
 
-    # Initialize job
     jobs[job_id] = {
         'status': 'processing',
         'progress': 0.0,
@@ -207,7 +209,11 @@ def api_webcam():
         'error': None
     }
 
-    thread = threading.Thread(target=run_pipeline, args=(job_id, actual_input, output_path), daemon=True)
+    thread = threading.Thread(
+        target=run_pipeline,
+        args=(job_id, actual_input, output_path, render_mode, bg_color, use_video_bg),
+        daemon=True
+    )
     thread.start()
 
     return jsonify({'success': True, 'job_id': job_id})

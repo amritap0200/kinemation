@@ -112,6 +112,124 @@
         }
         .rec-time { font-family: 'Consolas', monospace; font-size: 14px; }
         
+        .options-panel {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .options-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: rgba(255,255,255,0.9);
+        }
+        .option-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .option-row:last-child { margin-bottom: 0; }
+        .option-label {
+            width: 140px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+        }
+        .option-select {
+            flex: 1;
+            max-width: 300px;
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .option-select:focus {
+            outline: none;
+            border-color: #00F0FF;
+        }
+        .option-select option {
+            background: #1a1a1a;
+            color: #FFFFFF;
+        }
+        
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .color-preview input[type="color"] {
+            position: absolute;
+            width: 150%;
+            height: 150%;
+            top: -25%;
+            left: -25%;
+            cursor: pointer;
+            border: none;
+        }
+        .color-hex {
+            width: 100px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-size: 14px;
+            font-family: 'Consolas', monospace;
+        }
+        .color-hex:focus {
+            outline: none;
+            border-color: #00F0FF;
+        }
+        
+        .toggle-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .toggle {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle.active {
+            background: linear-gradient(90deg, #00F0FF, #4169E1);
+        }
+        .toggle-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #FFFFFF;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle.active .toggle-knob {
+            transform: translateX(22px);
+        }
+        .toggle-label {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        
         .controls {
             display: flex;
             gap: 16px;
@@ -177,7 +295,6 @@
             transform: none;
         }
         
-        /* Progress section */
         .progress-section {
             margin-top: 32px;
             padding: 24px;
@@ -216,7 +333,6 @@
             margin-top: 8px;
         }
         
-        /* Result section */
         .result-section {
             margin-top: 24px;
             padding: 24px;
@@ -249,7 +365,6 @@
             box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
         }
         
-        /* Error section */
         .error-section {
             margin-top: 24px;
             padding: 24px;
@@ -291,6 +406,39 @@
                 <div class="recording-indicator" id="recIndicator">
                     <div class="rec-dot"></div>
                     <span class="rec-time" id="recTime">REC 00:00</span>
+                </div>
+            </div>
+            
+            <div class="options-panel">
+                <div class="options-title">Processing Options</div>
+                
+                <div class="option-row">
+                    <span class="option-label">Output Mode</span>
+                    <select class="option-select" id="modeSelect">
+                        <option value="side_by_side">Side by Side (2D + 3D)</option>
+                        <option value="2d_only">2D Pose Only</option>
+                        <option value="3d_only">3D Pose Only</option>
+                    </select>
+                </div>
+                
+                <div class="option-row" id="bgColorRow">
+                    <span class="option-label">Background Color</span>
+                    <div class="color-picker-wrapper">
+                        <div class="color-preview" id="colorPreview" style="background: #000000;">
+                            <input type="color" id="bgColorPicker" value="#000000">
+                        </div>
+                        <input type="text" class="color-hex" id="bgColorHex" value="#000000" maxlength="7">
+                    </div>
+                </div>
+                
+                <div class="option-row hidden" id="videoBgRow">
+                    <span class="option-label">Video Background</span>
+                    <div class="toggle-wrapper">
+                        <div class="toggle" id="videoBgToggle">
+                            <div class="toggle-knob"></div>
+                        </div>
+                        <span class="toggle-label">Use original video as background</span>
+                    </div>
                 </div>
             </div>
             
@@ -344,18 +492,61 @@
         const errorSection = document.getElementById('errorSection');
         const errorDetail = document.getElementById('errorDetail');
         
+        const modeSelect = document.getElementById('modeSelect');
+        const bgColorPicker = document.getElementById('bgColorPicker');
+        const bgColorHex = document.getElementById('bgColorHex');
+        const colorPreview = document.getElementById('colorPreview');
+        const bgColorRow = document.getElementById('bgColorRow');
+        const videoBgRow = document.getElementById('videoBgRow');
+        const videoBgToggle = document.getElementById('videoBgToggle');
+        
         let stream = null;
         let mediaRecorder = null;
         let recordedChunks = [];
         let recordingTimer = null;
         let recordingSeconds = 0;
         let recordedBlob = null;
+        let useVideoBg = false;
+        
+        modeSelect.addEventListener('change', () => {
+            const mode = modeSelect.value;
+            if (mode === '2d_only') {
+                videoBgRow.classList.remove('hidden');
+                bgColorRow.classList.toggle('hidden', useVideoBg);
+            } else {
+                videoBgRow.classList.add('hidden');
+                bgColorRow.classList.remove('hidden');
+                useVideoBg = false;
+                videoBgToggle.classList.remove('active');
+            }
+        });
+        
+        videoBgToggle.addEventListener('click', () => {
+            useVideoBg = !useVideoBg;
+            videoBgToggle.classList.toggle('active', useVideoBg);
+            bgColorRow.classList.toggle('hidden', useVideoBg);
+        });
+        
+        bgColorPicker.addEventListener('input', (e) => {
+            const color = e.target.value;
+            bgColorHex.value = color;
+            colorPreview.style.background = color;
+        });
+        
+        bgColorHex.addEventListener('input', (e) => {
+            let color = e.target.value;
+            if (!color.startsWith('#')) color = '#' + color;
+            if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                bgColorPicker.value = color;
+                colorPreview.style.background = color;
+            }
+        });
         
         startCameraBtn.addEventListener('click', async () => {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
-                    audio: false  // No audio needed for pose estimation
+                    audio: false
                 });
                 video.srcObject = stream;
                 video.classList.remove('hidden');
@@ -373,7 +564,6 @@
             recordedChunks = [];
             recordedBlob = null;
             
-            // Use webm format for recording
             const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
                 ? 'video/webm;codecs=vp9' 
                 : 'video/webm';
@@ -387,7 +577,7 @@
             mediaRecorder.onstop = () => {
                 recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
             };
-            mediaRecorder.start(100); // Collect data every 100ms
+            mediaRecorder.start(100);
             
             previewContainer.classList.remove('active');
             previewContainer.classList.add('recording');
@@ -431,25 +621,25 @@
                 return;
             }
             
-            // Stop the camera stream
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
             
-            // Show progress, hide webcam section
             webcamSection.classList.add('hidden');
             progressSection.classList.remove('hidden');
             resultSection.classList.add('hidden');
             errorSection.classList.add('hidden');
             
             try {
-                // Upload the recording
                 progressStatus.textContent = 'Uploading recording...';
                 progressBar.style.width = '5%';
                 
                 const formData = new FormData();
                 const filename = `webcam_${Date.now()}.webm`;
                 formData.append('video', recordedBlob, filename);
+                formData.append('mode', modeSelect.value);
+                formData.append('bg_color', bgColorHex.value);
+                formData.append('use_video_bg', useVideoBg.toString());
                 
                 const uploadResponse = await fetch('/api/webcam', {
                     method: 'POST',
@@ -463,7 +653,6 @@
                     return;
                 }
                 
-                // Start polling for status
                 const jobId = uploadResult.job_id;
                 progressStatus.textContent = 'Processing started...';
                 progressBar.style.width = '10%';
