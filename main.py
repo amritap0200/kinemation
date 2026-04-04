@@ -32,25 +32,18 @@ os.close(devnull_fd)
 from scipy.optimize import linear_sum_assignment
 from scipy.ndimage import gaussian_filter1d
 
-# Add VideoPose3D to path
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(script_dir, 'VideoPose3D'))
 
 import torch
 from common.model import TemporalModelOptimized1f
 
-# Local imports
 from mediapipe_to_h36m import mediapipe_to_h36m, H36M_CONNECTIONS, COCO_CONNECTIONS
 
-
-# ============================================================================
-# Configuration
-# ============================================================================
 
 MAX_PEOPLE = 6  # Reduced for better tracking stability
 RECEPTIVE_FIELD = 243  # VideoPose3D receptive field for filter_widths=[3,3,3,3,3]
 
-# Color palette for multiple people (consistent colors)
 PERSON_COLORS = [
     (0, 255, 0),    # Green
     (255, 0, 0),    # Blue (BGR)
@@ -60,10 +53,6 @@ PERSON_COLORS = [
     (0, 255, 255),  # Yellow
 ]
 
-
-# ============================================================================
-# Preprocessing (preserved from prototype5.py)
-# ============================================================================
 
 def apply_clahe(frame):
     """Apply CLAHE in LAB color space for better contrast."""
@@ -91,10 +80,6 @@ def preprocess_frame(frame, max_dim=800, apply_blur=True, apply_clahe_enhancemen
     
     return frame
 
-
-# ============================================================================
-# 2D Pose Estimation
-# ============================================================================
 
 def detect_persons(yolo_model, frame, confidence=0.5):
     """Detect persons in frame using YOLOv8."""
@@ -148,10 +133,6 @@ def estimate_pose_mediapipe(landmarker, frame, box):
     return landmarks
 
 
-# ============================================================================
-# Batch Tracking (Fixed - processes entire sequence at once)
-# ============================================================================
-
 def get_bbox_from_keypoints(keypoints):
     """Compute bounding box from keypoints."""
     valid = keypoints[(keypoints[:, 0] > 0) & (keypoints[:, 1] > 0)]
@@ -195,14 +176,12 @@ def batch_track_people(raw_keypoints, iou_threshold=0.3):
     N, max_people, n_joints, _ = raw_keypoints.shape
     tracked = np.zeros_like(raw_keypoints)
     
-    # Initialize with first frame
     tracked[0] = raw_keypoints[0]
     prev_boxes = [get_bbox_from_keypoints(raw_keypoints[0, p]) for p in range(max_people)]
     
     for frame_idx in range(1, N):
         frame_kps = raw_keypoints[frame_idx]
         
-        # Get bounding boxes for current frame detections
         det_boxes = []
         det_indices = []
         for d in range(max_people):
@@ -214,7 +193,6 @@ def batch_track_people(raw_keypoints, iou_threshold=0.3):
         if not det_boxes:
             continue
         
-        # Build cost matrix (1 - IoU)
         cost = np.ones((max_people, len(det_boxes)))
         iou_matrix = np.zeros((max_people, len(det_boxes)))
         
@@ -226,17 +204,13 @@ def batch_track_people(raw_keypoints, iou_threshold=0.3):
                 iou_matrix[t, di] = iou
                 cost[t, di] = 1.0 - iou
         
-        # Hungarian matching
         t_ids, d_ids = linear_sum_assignment(cost)
         assigned_t, assigned_d = set(), set()
         
         for t_id, d_id in zip(t_ids, d_ids):
             iou = iou_matrix[t_id, d_id]
             
-            # IoU threshold gate: reject assignments with low IoU
             if iou < iou_threshold and prev_boxes[t_id] is not None:
-                # This detection doesn't match the track well enough
-                # It will be assigned to an empty slot below
                 continue
             
             orig = det_indices[d_id]
@@ -245,7 +219,6 @@ def batch_track_people(raw_keypoints, iou_threshold=0.3):
             assigned_t.add(t_id)
             assigned_d.add(d_id)
         
-        # Assign leftover detections to empty slots (new people entering scene)
         leftover = [det_indices[d] for d in range(len(det_boxes)) if d not in assigned_d]
         empty = [t for t in range(max_people) if t not in assigned_t]
         for slot, orig in zip(empty, leftover):
@@ -289,7 +262,6 @@ def smooth_track(kps_track, sigma=2):
     if has_detection.sum() < 3:
         return smoothed
     
-    # Find contiguous detection runs
     runs = []
     in_run = False
     run_start = 0
@@ -304,7 +276,6 @@ def smooth_track(kps_track, sigma=2):
     if in_run:
         runs.append((run_start, N))
     
-    # Smooth each run independently
     for start, end in runs:
         if end - start < 3:
             continue
@@ -339,23 +310,12 @@ def smooth_all_tracks(tracked_keypoints, sigma=2):
     return smoothed
 
 
-# ============================================================================
-# Joint-Specific Smoothing Parameters (planv5)
-# ============================================================================
-# Different joints have different movement characteristics:
-# - Core/stability joints (spine, hip root): high smoothing
-# - Locomotion joints (hip angles, knee, ankle): medium smoothing
-# - Manipulation joints (shoulder, elbow, wrist): low smoothing (preserve expressiveness)
 
-# TUNED VALUES: Reduced from initial values to preserve more motion range
-# while still providing meaningful jitter reduction
 JOINT_SIGMA_3D = {
-    # Core stability joints - moderate-high smoothing (sigma 2.0-2.2)
     0: 2.2,   # hip (root) - anchor point, should be stable
     7: 2.2,   # spine - core stability
     8: 2.0,   # neck - upper body stability
     
-    # Locomotion joints - moderate smoothing (sigma 1.6-1.9)
     1: 1.9,   # r_hip - hip angle
     4: 1.9,   # l_hip - hip angle
     2: 1.7,   # r_knee - leg joint
@@ -363,11 +323,9 @@ JOINT_SIGMA_3D = {
     3: 1.5,   # r_ankle - foot
     6: 1.5,   # l_ankle - foot
     
-    # Head joints - moderate smoothing
     9: 1.7,   # nose - follows body
     10: 1.7,  # head_top - follows body
     
-    # Arm joints - low smoothing (preserve expressiveness)
     11: 1.4,  # l_shoulder - arm root
     14: 1.4,  # r_shoulder - arm root
     12: 1.2,  # l_elbow - mid-arm
@@ -376,20 +334,11 @@ JOINT_SIGMA_3D = {
     16: 1.0,  # r_wrist - hand (most expressive)
 }
 
-# Per-joint velocity limits (units/frame)
-# Prevents physically impossible movement spikes
-# These are tuned to allow natural motion while removing outliers
-# Values increased from initial conservative estimates after testing
 VELOCITY_LIMITS_3D = {
-    # Core - limited movement (these joints should be stable)
     0: 0.025, 7: 0.025, 8: 0.035,
-    # Hips - moderate (allow walking/running motions)
     1: 0.050, 4: 0.050,
-    # Legs - allow cyclic walking/running motion
     2: 0.060, 5: 0.060, 3: 0.080, 6: 0.080,
-    # Arms - allow fast expressive movements
     11: 0.080, 14: 0.080, 12: 0.120, 15: 0.120, 13: 0.150, 16: 0.150,
-    # Head - moderate
     9: 0.050, 10: 0.050,
 }
 
@@ -429,21 +378,17 @@ def smooth_3d_trajectory(poses_3d, sigma=1.5, hip_sigma_multiplier=1.5,
     
     smoothed = poses_3d.copy()
     
-    # Find valid frames (non-zero poses)
     valid_mask = np.abs(poses_3d).max(axis=(1, 2)) > 0.001
     valid_frames = np.where(valid_mask)[0]
     
     if len(valid_frames) < 3:
         return poses_3d
-    
-    # ========================================
-    # Pass 1: Joint-specific Gaussian smoothing
-    # ========================================
+
+
     for joint in range(17):
         if use_adaptive_sigma:
             joint_sigma = JOINT_SIGMA_3D.get(joint, sigma)
         else:
-            # Legacy behavior: extra smoothing for hip joints only
             hip_joints = {0, 1, 4}
             joint_sigma = sigma * hip_sigma_multiplier if joint in hip_joints else sigma
         
@@ -452,11 +397,8 @@ def smooth_3d_trajectory(poses_3d, sigma=1.5, hip_sigma_multiplier=1.5,
             if len(valid_values) >= 3:
                 smoothed_values = gaussian_filter1d(valid_values, sigma=joint_sigma)
                 smoothed[valid_mask, joint, coord] = smoothed_values
-    
-    # ========================================
-    # Pass 2: Velocity limiting
-    # ========================================
-    # Remove physically impossible velocity spikes by clamping movement
+
+
     if apply_velocity_limit and len(valid_frames) > 1:
         for i in range(1, len(valid_frames)):
             prev_f = valid_frames[i - 1]
@@ -468,7 +410,6 @@ def smooth_3d_trajectory(poses_3d, sigma=1.5, hip_sigma_multiplier=1.5,
                 velocity = np.linalg.norm(delta)
                 
                 if velocity > max_vel:
-                    # Scale down movement to max allowed velocity
                     scale = max_vel / velocity
                     smoothed[curr_f, joint] = smoothed[prev_f, joint] + delta * scale
     
@@ -503,8 +444,6 @@ def smooth_all_3d_tracks(keypoints_3d, sigma=1.5, use_adaptive_sigma=True, apply
     return smoothed
 
 
-# Bone pairs in H36M format for symmetry enforcement
-# Format: (left_joint_start, left_joint_end, right_joint_start, right_joint_end)
 H36M_SYMMETRIC_BONES = [
     (4, 5, 1, 2),     # hip-to-knee (L: 4→5, R: 1→2) - thigh
     (5, 6, 2, 3),     # knee-to-ankle (L: 5→6, R: 2→3) - shin
@@ -557,12 +496,10 @@ def enforce_bone_constraints(poses_3d, symmetry_weight=0.5):
     
     constrained = poses_3d.copy()
     
-    # Find valid frames
     valid_mask = np.abs(poses_3d).max(axis=(1, 2)) > 0.001
     if valid_mask.sum() < 5:
         return poses_3d
     
-    # Step 1: Compute median bone lengths across valid frames
     all_lengths = {}  # bone → list of lengths
     
     for frame_idx in np.where(valid_mask)[0]:
@@ -574,23 +511,18 @@ def enforce_bone_constraints(poses_3d, symmetry_weight=0.5):
     
     median_lengths = {bone: np.median(lengths) for bone, lengths in all_lengths.items()}
     
-    # Step 2: Enforce symmetry on paired limbs
     for left_a, left_b, right_a, right_b in H36M_SYMMETRIC_BONES:
         left_bone = (left_a, left_b)
         right_bone = (right_a, right_b)
         
         if left_bone in median_lengths and right_bone in median_lengths:
             avg_length = (median_lengths[left_bone] + median_lengths[right_bone]) / 2
-            # Blend toward symmetric length
             median_lengths[left_bone] = (1 - symmetry_weight) * median_lengths[left_bone] + symmetry_weight * avg_length
             median_lengths[right_bone] = (1 - symmetry_weight) * median_lengths[right_bone] + symmetry_weight * avg_length
     
-    # Step 3: Apply constraints frame by frame
     for frame_idx in np.where(valid_mask)[0]:
         pose = constrained[frame_idx].copy()
         
-        # Process bones in hierarchical order (from root outward)
-        # This ensures parent joints don't move after child adjustment
         for idx_a, idx_b in H36M_CONNECTIONS:
             bone = (idx_a, idx_b)
             if bone not in median_lengths:
@@ -603,10 +535,8 @@ def enforce_bone_constraints(poses_3d, symmetry_weight=0.5):
             if current_length < 0.001:
                 continue
             
-            # Scale factor to reach target length
             scale = target_length / current_length
             
-            # Adjust child joint position (keep parent fixed)
             direction = current_vec / current_length
             pose[idx_b] = pose[idx_a] + direction * target_length
         
@@ -635,10 +565,6 @@ def enforce_all_bone_constraints(keypoints_3d, symmetry_weight=0.5):
     
     return constrained
 
-
-# ============================================================================
-# VideoPose3D Inference
-# ============================================================================
 
 def normalize_screen_coordinates(X, w, h):
     """Normalize 2D keypoints to [-1, 1] range, preserving aspect ratio."""
@@ -671,17 +597,14 @@ class VideoPose3DLifter:
         """Lift a sequence of 2D keypoints to 3D."""
         N = keypoints_2d_sequence.shape[0]
         
-        # Normalize to [-1, 1]
         keypoints_norm = normalize_screen_coordinates(
             keypoints_2d_sequence, w=video_width, h=video_height
         )
         
-        # Pad sequence with edge frames
         left_pad = np.tile(keypoints_norm[0:1], (self.pad, 1, 1))
         right_pad = np.tile(keypoints_norm[-1:], (self.pad, 1, 1))
         keypoints_padded = np.concatenate([left_pad, keypoints_norm, right_pad], axis=0)
         
-        # Sliding window inference
         all_predictions = []
         
         with torch.no_grad():
@@ -711,7 +634,6 @@ class VideoPose3DLifter:
             print(f"  Lifting person {person_id + 1} ({has_detection.sum()} frames)...")
             keypoints_3d = self.lift_sequence(person_kps, video_width, video_height)
             
-            # Zero out frames without detection
             for i in range(N):
                 if not has_detection[i]:
                     keypoints_3d[i] = 0
@@ -720,10 +642,6 @@ class VideoPose3DLifter:
         
         return keypoints_3d_all
 
-
-# ============================================================================
-# Visualization (Fixed - proper coordinate handling)
-# ============================================================================
 
 def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
     """
@@ -757,24 +675,19 @@ def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
         if p[0] > 0 and p[1] > 0:
             return (int(p[0]), int(p[1]))
         return None
-    
-    # ========================================
-    # 1. Draw face circle
-    # ========================================
+
+
     nose = pt(NOSE)
     l_ear = pt(L_EAR)
     r_ear = pt(R_EAR)
     
     if nose and l_ear and r_ear:
-        # Calculate radius from nose to ear distance (average of both ears)
         ear_dist_l = np.sqrt((nose[0] - l_ear[0])**2 + (nose[1] - l_ear[1])**2)
         ear_dist_r = np.sqrt((nose[0] - r_ear[0])**2 + (nose[1] - r_ear[1])**2)
         radius = int(max((ear_dist_l + ear_dist_r) / 2, 10))
         
-        # Draw circle centered at nose
         cv2.circle(canvas, nose, radius, color, 2)
         
-        # Draw neck connection (bottom of circle to shoulder center)
         neck_bottom = (nose[0], nose[1] + radius)
         l_sh = pt(L_SHOULDER)
         r_sh = pt(R_SHOULDER)
@@ -782,36 +695,27 @@ def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
             mid_shoulder = ((l_sh[0] + r_sh[0]) // 2, (l_sh[1] + r_sh[1]) // 2)
             cv2.line(canvas, neck_bottom, mid_shoulder, color, 2)
     elif nose:
-        # Fallback: just draw small circle if ears not detected
         cv2.circle(canvas, nose, 15, color, 2)
-    
-    # ========================================
-    # 2. Draw shoulder bar
-    # ========================================
+
+
     l_sh = pt(L_SHOULDER)
     r_sh = pt(R_SHOULDER)
     if l_sh and r_sh:
         cv2.line(canvas, l_sh, r_sh, color, 2)
-    
-    # ========================================
-    # 3. Draw spine line (mid_shoulder to mid_hip)
-    # ========================================
+
+
     l_hip = pt(L_HIP)
     r_hip = pt(R_HIP)
     if l_sh and r_sh and l_hip and r_hip:
         mid_shoulder = ((l_sh[0] + r_sh[0]) // 2, (l_sh[1] + r_sh[1]) // 2)
         mid_hip = ((l_hip[0] + r_hip[0]) // 2, (l_hip[1] + r_hip[1]) // 2)
         cv2.line(canvas, mid_shoulder, mid_hip, color, 2)
-    
-    # ========================================
-    # 4. Draw hip bar
-    # ========================================
+
+
     if l_hip and r_hip:
         cv2.line(canvas, l_hip, r_hip, color, 2)
-    
-    # ========================================
-    # 5. Draw arms
-    # ========================================
+
+
     arm_connections = [
         (L_SHOULDER, L_ELBOW), (L_ELBOW, L_WRIST),
         (R_SHOULDER, R_ELBOW), (R_ELBOW, R_WRIST),
@@ -821,14 +725,9 @@ def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
         pb = pt(idx_b)
         if pa and pb:
             cv2.line(canvas, pa, pb, color, 2)
+
+
     
-    # ========================================
-    # 6. Draw legs (traditional stick figure: hip directly to knee)
-    # ========================================
-    # Instead of hip→thigh→knee→ankle (which creates weird angles),
-    # we use simplified stick figure: hip→knee→ankle
-    
-    # Draw left leg: left hip → left knee → left ankle
     l_hip = pt(L_HIP)
     l_knee = pt(L_KNEE)
     l_ankle = pt(L_ANKLE)
@@ -838,7 +737,6 @@ def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
     if l_knee and l_ankle:
         cv2.line(canvas, l_knee, l_ankle, color, 2)
     
-    # Draw right leg: right hip → right knee → right ankle
     r_hip = pt(R_HIP)
     r_knee = pt(R_KNEE)
     r_ankle = pt(R_ANKLE)
@@ -847,10 +745,8 @@ def draw_skeleton_2d(canvas, keypoints_2d, color, tracked_mask=None):
         cv2.line(canvas, r_hip, r_knee, color, 2)
     if r_knee and r_ankle:
         cv2.line(canvas, r_knee, r_ankle, color, 2)
-    
-    # ========================================
-    # 7. Draw joint dots (skip face indices 0-4)
-    # ========================================
+
+
     for i in range(5, 17):  # Skip face landmarks
         point = keypoints_2d[i]
         if point[0] > 0 and point[1] > 0:
@@ -883,15 +779,12 @@ def project_3d_to_2d_anchored(keypoints_3d, keypoints_2d):
     points_2d = []
     z_values = []
     
-    # Get valid 2D keypoints for anchor bbox
     valid_2d_mask = (keypoints_2d[:, 0] > 0) & (keypoints_2d[:, 1] > 0)
     valid_3d_mask = np.abs(keypoints_3d).max(axis=1) > 0.001
     
     if valid_2d_mask.sum() < 2 or valid_3d_mask.sum() < 2:
-        # Not enough points for anchoring
         return [None] * 17, [0] * 17
     
-    # Compute 2D anchor bbox from valid 2D keypoints
     valid_2d = keypoints_2d[valid_2d_mask]
     bbox_2d_min = valid_2d.min(axis=0)
     bbox_2d_max = valid_2d.max(axis=0)
@@ -899,7 +792,6 @@ def project_3d_to_2d_anchored(keypoints_3d, keypoints_2d):
     bbox_2d_size = bbox_2d_max - bbox_2d_min
     bbox_2d_size = np.maximum(bbox_2d_size, 1)  # Avoid division by zero
     
-    # Compute 3D bbox in XY plane from valid 3D keypoints
     valid_3d = keypoints_3d[valid_3d_mask]
     bbox_3d_min = valid_3d[:, :2].min(axis=0)  # Only X,Y
     bbox_3d_max = valid_3d[:, :2].max(axis=0)
@@ -907,48 +799,32 @@ def project_3d_to_2d_anchored(keypoints_3d, keypoints_2d):
     bbox_3d_size = bbox_3d_max - bbox_3d_min
     bbox_3d_size = np.maximum(bbox_3d_size, 0.001)  # Avoid division by zero
     
-    # Compute scale factor: map 3D bbox to 2D bbox size
-    # Use the smaller scale to preserve aspect ratio
     scale = min(bbox_2d_size[0] / bbox_3d_size[0], 
                 bbox_2d_size[1] / bbox_3d_size[1])
     
-    # Pre-compute hip center from 2D for root joint positioning
     # H36M: index 11 = left_hip (from COCO 11), index 12 = right_hip (from COCO 12)
-    # But we need the COCO indices for 2D keypoints
     hip_center_2d = None
     if keypoints_2d[11].max() > 0 and keypoints_2d[12].max() > 0:
         hip_center_2d = (keypoints_2d[11] + keypoints_2d[12]) / 2
     
-    # Project each 3D joint
     for i in range(17):
         x, y, z = keypoints_3d[i]
         
         # CRITICAL FIX: Root joint (index 0) is ALWAYS at origin (0,0,0)
-        # because VideoPose3D outputs root-relative coordinates.
-        # This is NOT invalid - it's the anchor point for all other joints.
-        # We position it at the 2D hip center.
         if i == 0:
             if hip_center_2d is not None:
                 points_2d.append((int(hip_center_2d[0]), int(hip_center_2d[1])))
                 z_values.append(0)
             else:
-                # Fallback: use 2D bbox center
                 points_2d.append((int(bbox_2d_center[0]), int(bbox_2d_center[1])))
                 z_values.append(0)
             continue
         
-        # Check if valid (non-root joints only)
         if abs(x) < 0.001 and abs(y) < 0.001 and abs(z) < 0.001:
             points_2d.append(None)
             z_values.append(0)
             continue
         
-        # Transform: center 3D at origin, scale, then translate to 2D center
-        # VERIFIED: VideoPose3D uses SAME coordinate system as screen:
-        # - 3D X: +X = right (same as screen)
-        # - 3D Y: +Y = down (same as screen)  
-        # - 3D Z: depth (not used for 2D projection)
-        # NO flips needed - direct mapping
         px = (x - bbox_3d_center[0]) * scale + bbox_2d_center[0]
         py = (y - bbox_3d_center[1]) * scale + bbox_2d_center[1]
         
@@ -982,10 +858,8 @@ def draw_skeleton_3d(canvas, keypoints_3d, keypoints_2d, color):
     if keypoints_3d is None or np.abs(keypoints_3d).max() == 0:
         return canvas
     
-    # Project 3D to 2D using bbox-anchored approach
     points_2d, z_values = project_3d_to_2d_anchored(keypoints_3d, keypoints_2d)
     
-    # Get z range for depth coloring
     valid_z = [z for z in z_values if z != 0]
     if valid_z:
         z_min, z_max = min(valid_z), max(valid_z)
@@ -1000,14 +874,10 @@ def draw_skeleton_3d(canvas, keypoints_3d, keypoints_2d, color):
     H36M_HEAD_TOP = 10
     H36M_NECK = 8
     
-    # Connections to skip (will be replaced with face circle)
     face_connections = {(8, 9), (9, 10)}  # neck→nose, nose→head_top
-    
-    # ========================================
-    # 1. Draw skeleton connections (excluding face)
-    # ========================================
+
+
     for idx_a, idx_b in H36M_CONNECTIONS:
-        # Skip face connections - we'll draw a circle instead
         if (idx_a, idx_b) in face_connections:
             continue
             
@@ -1015,62 +885,48 @@ def draw_skeleton_3d(canvas, keypoints_3d, keypoints_2d, color):
             pa = points_2d[idx_a]
             pb = points_2d[idx_b]
             
-            # Clamp to canvas bounds
             pa = (np.clip(pa[0], 0, w-1), np.clip(pa[1], 0, h-1))
             pb = (np.clip(pb[0], 0, w-1), np.clip(pb[1], 0, h-1))
             
-            # Depth-based brightness (closer = brighter)
             avg_z = (z_values[idx_a] + z_values[idx_b]) / 2
             brightness = 0.5 + 0.5 * (1 - (avg_z - z_min) / z_range)
             brightness = np.clip(brightness, 0.3, 1.0)
             line_color = tuple(int(c * brightness) for c in color)
             
             cv2.line(canvas, pa, pb, line_color, 2)
-    
-    # ========================================
-    # 2. Draw face circle
-    # ========================================
+
+
     nose_2d = points_2d[H36M_NOSE]
     head_2d = points_2d[H36M_HEAD_TOP]
     neck_2d = points_2d[H36M_NECK]
     
     if nose_2d and head_2d:
-        # Calculate radius from nose to head_top distance
         radius = int(np.sqrt((nose_2d[0] - head_2d[0])**2 + 
                               (nose_2d[1] - head_2d[1])**2))
         radius = max(radius, 10)
         
-        # Calculate circle center (midpoint between nose and head_top)
         center_x = (nose_2d[0] + head_2d[0]) // 2
         center_y = (nose_2d[1] + head_2d[1]) // 2
         center = (np.clip(center_x, 0, w-1), np.clip(center_y, 0, h-1))
         
-        # Depth-based brightness
         avg_z = (z_values[H36M_NOSE] + z_values[H36M_HEAD_TOP]) / 2
         brightness = 0.5 + 0.5 * (1 - (avg_z - z_min) / z_range)
         brightness = np.clip(brightness, 0.3, 1.0)
         circle_color = tuple(int(c * brightness) for c in color)
         
-        # Draw face circle
         cv2.circle(canvas, center, radius, circle_color, 2)
         
-        # Draw neck connection (bottom of circle to neck)
         if neck_2d:
             neck_pt = (np.clip(neck_2d[0], 0, w-1), np.clip(neck_2d[1], 0, h-1))
             circle_bottom = (center[0], min(center[1] + radius, h-1))
             cv2.line(canvas, circle_bottom, neck_pt, circle_color, 2)
     
     elif nose_2d:
-        # Fallback: small circle at nose if head_top not available
         nose_pt = (np.clip(nose_2d[0], 0, w-1), np.clip(nose_2d[1], 0, h-1))
         cv2.circle(canvas, nose_pt, 15, color, 2)
-    
-    # ========================================
-    # 3. Draw joint dots (skip head joints 9, 10 and intermediate hip joints 1, 4)
-    # ========================================
+
+
     # H36M joint indices to skip:
-    # - 9, 10: head joints (we draw a circle instead)
-    # - 1, 4: intermediate hip joints (we skip these in traditional stick figure)
     skip_joints = {H36M_NOSE, H36M_HEAD_TOP, 1, 4}
     
     for i, point in enumerate(points_2d):
@@ -1111,12 +967,10 @@ def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame,
     max_people = keypoints_2d_all.shape[0]
     
     if mode == 'side_by_side':
-        # Left: 2D on video, Right: 3D on black (anchored to same positions)
         left = original_frame.copy()
         right = np.zeros((h, w, 3), dtype=np.uint8)
         
         for p in range(max_people):
-            # Check if person has detection in this frame
             has_2d = keypoints_2d_all[p].max() > 0
             has_3d = np.abs(keypoints_3d_all[p]).max() > 0
             
@@ -1125,11 +979,9 @@ def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame,
                 left = draw_skeleton_2d(left, keypoints_2d_all[p], color)
             
             if has_3d and has_2d:
-                # Draw 3D skeleton anchored to 2D bbox
                 color = PERSON_COLORS[p % len(PERSON_COLORS)]
                 right = draw_skeleton_3d(right, keypoints_3d_all[p], keypoints_2d_all[p], color)
             elif has_3d:
-                # Has 3D but no 2D - shouldn't happen normally, skip
                 pass
         
         cv2.putText(left, "2D Pose", (10, 30), 
@@ -1139,7 +991,6 @@ def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame,
         
         return np.hstack([left, right])
     else:
-        # Skeleton only on black background (still uses bbox-anchored projection)
         canvas = np.zeros((h, w, 3), dtype=np.uint8)
         
         for p in range(max_people):
@@ -1153,10 +1004,6 @@ def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame,
         return canvas
 
 
-# ============================================================================
-# Main Pipeline
-# ============================================================================
-
 class PoseEstimationPipeline:
     """Complete 3D pose estimation pipeline."""
     
@@ -1166,12 +1013,10 @@ class PoseEstimationPipeline:
         
         self.device = device
         
-        # Load YOLO model
         yolo_path = os.path.join(models_dir, 'yolov8n.pt')
         print("Loading models...")
         self.yolo_model = YOLO(yolo_path, verbose=False)
         
-        # Load MediaPipe model (suppress C++ warnings)
         mp_model_path = os.path.join(models_dir, 'pose_landmarker_lite.task')
         BaseOptions = mp.tasks.BaseOptions
         PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -1193,7 +1038,6 @@ class PoseEstimationPipeline:
         os.dup2(saved, stderr_fd)
         os.close(devnull_fd)
         
-        # Load VideoPose3D model
         videopose_path = os.path.join(script_dir, 'VideoPose3D', 'pretrained_h36m_detectron_coco.bin')
         self.lifter = VideoPose3DLifter(videopose_path, device=device)
         print("Models loaded!")
@@ -1218,7 +1062,6 @@ class PoseEstimationPipeline:
         print(f"Video: {video_path}")
         print(f"Resolution: {video_width}x{video_height}, FPS: {fps}, Frames: {total_frames}")
         
-        # Get output dimensions
         ret, first_frame = cap.read()
         if not ret:
             print("Error: Cannot read first frame")
@@ -1228,10 +1071,8 @@ class PoseEstimationPipeline:
         processed_frame = preprocess_frame(first_frame)
         out_h, out_w = processed_frame.shape[:2]
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        
-        # ====================================================================
-        # Phase 1: Extract ALL 2D poses first (before any tracking)
-        # ====================================================================
+
+
         print("\n[Phase 1/4] Extracting 2D poses...")
         
         all_raw_keypoints = []  # Raw detections per frame
@@ -1247,7 +1088,6 @@ class PoseEstimationPipeline:
             
             boxes = detect_persons(self.yolo_model, processed)
             
-            # Store all detections for this frame (up to MAX_PEOPLE)
             frame_kps = np.zeros((MAX_PEOPLE, 33, 2), dtype=np.float32)
             
             for i, box in enumerate(boxes[:MAX_PEOPLE]):
@@ -1262,30 +1102,23 @@ class PoseEstimationPipeline:
         
         cap.release()
         
-        # Stack: (N, MAX_PEOPLE, 33, 2)
         all_raw_keypoints = np.stack(all_raw_keypoints, axis=0)
         N = all_raw_keypoints.shape[0]
         print(f"  Extracted: {all_raw_keypoints.shape}")
-        
-        # ====================================================================
-        # Phase 2: Batch tracking for consistent person IDs
-        # ====================================================================
+
+
         print("\n[Phase 2/4] Batch tracking for consistent IDs...")
         
         all_tracked = batch_track_people(all_raw_keypoints)
         all_tracked = filter_short_tracks(all_tracked, min_frames=10)
         
-        # Count active tracks
         active_tracks = sum(1 for p in range(MAX_PEOPLE) 
                           if any(all_tracked[i, p].max() > 0 for i in range(N)))
         print(f"  Active tracks: {active_tracks}")
-        
-        # ====================================================================
-        # Phase 3: Convert to H36M and lift to 3D
-        # ====================================================================
+
+
         print("\n[Phase 3/4] Converting and lifting to 3D...")
         
-        # Convert MediaPipe 33 → H36M 17
         all_h36m_2d = np.zeros((N, MAX_PEOPLE, 17, 2), dtype=np.float32)
         
         for i in range(N):
@@ -1293,16 +1126,13 @@ class PoseEstimationPipeline:
                 if all_tracked[i, p].max() > 0:
                     all_h36m_2d[i, p] = mediapipe_to_h36m(all_tracked[i, p])
         
-        # Smooth 2D before lifting
         all_h36m_2d_smooth = smooth_all_tracks(all_h36m_2d, sigma=smoothing_sigma)
         
-        # Lift to 3D
         all_3d_keypoints = self.lifter.lift_multiperson_sequence(
             all_h36m_2d_smooth, out_w, out_h
         )
         print(f"  3D keypoints: {all_3d_keypoints.shape}")
         
-        # Enhanced 3D smoothing (planv5): joint-adaptive sigma + velocity limiting
         all_3d_keypoints = smooth_all_3d_tracks(
             all_3d_keypoints, 
             sigma=smoothing_sigma * 0.75,  # Base sigma (used if adaptive disabled)
@@ -1311,13 +1141,10 @@ class PoseEstimationPipeline:
         )
         print(f"  Applied enhanced 3D smoothing (adaptive sigma + velocity limiting)")
         
-        # Apply bone length constraints (enforces symmetry and temporal consistency)
         all_3d_keypoints = enforce_all_bone_constraints(all_3d_keypoints, symmetry_weight=0.7)
         print(f"  Applied bone length constraints (symmetry=0.7)")
-        
-        # ====================================================================
-        # Phase 4: Render output video
-        # ====================================================================
+
+
         print("\n[Phase 4/4] Rendering output video...")
         
         if render_mode == 'side_by_side':
@@ -1364,10 +1191,6 @@ class PoseEstimationPipeline:
         """Release resources."""
         self.landmarker.close()
 
-
-# ============================================================================
-# CLI Entry Point
-# ============================================================================
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1416,3 +1239,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+
