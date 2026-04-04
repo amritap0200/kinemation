@@ -8,3 +8,6 @@ __pycache__/
 VideoPose3D/
 models/
 *.mp4
+/app.py
+/frontend-resources
+/project

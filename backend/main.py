@@ -34,6 +34,8 @@ from scipy.optimize import linear_sum_assignment
 from scipy.ndimage import gaussian_filter1d
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
 sys.path.insert(0, os.path.join(script_dir, 'VideoPose3D'))
 
 import torch
@@ -777,7 +779,7 @@ class PoseEstimationPipeline:
         self.lifter = VideoPose3DLifter(videopose_path, device=device)
         print("Models loaded!")
     
-    def process_video(self, video_path, output_path, smoothing_sigma=2, render_mode='side_by_side', export_npy=False, show_progress=True):
+    def process_video(self, video_path, output_path, smoothing_sigma=2, render_mode='side_by_side', export_npy=False, show_progress=True, progress_callback=None):
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             print(f"Error: Cannot open video: {video_path}")
@@ -802,6 +804,8 @@ class PoseEstimationPipeline:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         
         print("\n[Phase 1/4] Extracting 2D poses...")
+        if progress_callback:
+            progress_callback(0.05, 'Extracting 2D poses...', 'Phase 1/4: 2D Pose Extraction')
         all_raw_keypoints = []
         frame_num = 0
         
@@ -832,6 +836,8 @@ class PoseEstimationPipeline:
         print(f"  Extracted: {all_raw_keypoints.shape}")
         
         print("\n[Phase 2/4] Batch tracking for consistent IDs...")
+        if progress_callback:
+            progress_callback(0.35, 'Tracking people across frames...', 'Phase 2/4: Multi-Person Tracking')
         all_tracked = batch_track_people(all_raw_keypoints)
         all_tracked = filter_short_tracks(all_tracked, min_frames=10)
         
@@ -839,6 +845,8 @@ class PoseEstimationPipeline:
         print(f"  Active tracks: {active_tracks}")
         
         print("\n[Phase 3/4] Converting and lifting to 3D...")
+        if progress_callback:
+            progress_callback(0.45, 'Lifting 2D poses to 3D...', 'Phase 3/4: 3D Pose Lifting')
         all_h36m_2d = np.zeros((N, MAX_PEOPLE, 17, 2), dtype=np.float32)
         
         for i in range(N):
@@ -861,6 +869,8 @@ class PoseEstimationPipeline:
         print(f"  Applied bone length constraints (symmetry=0.7)")
         
         print("\n[Phase 4/4] Rendering output video...")
+        if progress_callback:
+            progress_callback(0.70, 'Rendering output video...', 'Phase 4/4: Video Rendering')
         
         if render_mode == 'side_by_side':
             output_width = out_w * 2
@@ -899,40 +909,148 @@ class PoseEstimationPipeline:
             print(f"  Saved 3D keypoints to: {npy_path}")
         
         print(f"\n✓ Output saved to: {output_path}")
+        if progress_callback:
+            progress_callback(1.0, 'Processing complete!', 'Done')
     
     def close(self):
         self.landmarker.close()
 
 
+# Process video file and return results (API function)
+def process_video_file(input_path, output_path, mode='side_by_side', smoothing=2.0, export_npy=False, device='cpu'):
+    if not os.path.isfile(input_path):
+        return {"success": False, "error": f"Input file not found: {input_path}"}
+    
+    pipeline = PoseEstimationPipeline(device=device)
+    try:
+        pipeline.process_video(
+            video_path=input_path,
+            output_path=output_path,
+            smoothing_sigma=smoothing,
+            render_mode=mode,
+            export_npy=export_npy
+        )
+        return {"success": True, "output_path": output_path}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    finally:
+        pipeline.close()
+
+
+# Process webcam stream (live mode)
+def process_webcam(output_path=None, duration=None, mode='side_by_side', device='cpu'):
+    pipeline = PoseEstimationPipeline(device=device)
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        pipeline.close()
+        return {"success": False, "error": "Cannot open webcam"}
+    
+    fps = 30
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    out = None
+    if output_path:
+        out_w = width * 2 if mode == 'side_by_side' else width
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (out_w, height))
+    
+    frame_buffer = []
+    buffer_size = RECEPTIVE_FIELD
+    
+    print("Starting webcam... Press 'q' to stop")
+    start_time = cv2.getTickCount()
+    frame_count = 0
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            processed = preprocess_frame(frame)
+            out_h, out_w = processed.shape[:2]
+            
+            boxes = detect_persons(pipeline.yolo_model, processed)
+            frame_kps = np.zeros((MAX_PEOPLE, 33, 2), dtype=np.float32)
+            for i, box in enumerate(boxes[:MAX_PEOPLE]):
+                landmarks = estimate_pose_mediapipe(pipeline.landmarker, processed, box)
+                if landmarks is not None:
+                    frame_kps[i] = landmarks
+            
+            frame_buffer.append(frame_kps)
+            if len(frame_buffer) > buffer_size:
+                frame_buffer.pop(0)
+            
+            h36m_2d = np.zeros((MAX_PEOPLE, 17, 2), dtype=np.float32)
+            for p in range(MAX_PEOPLE):
+                if frame_kps[p].max() > 0:
+                    h36m_2d[p] = mediapipe_to_h36m(frame_kps[p])
+            
+            if len(frame_buffer) >= 3:
+                buffer_arr = np.stack(frame_buffer, axis=0)
+                h36m_buffer = np.zeros((len(frame_buffer), MAX_PEOPLE, 17, 2), dtype=np.float32)
+                for i in range(len(frame_buffer)):
+                    for p in range(MAX_PEOPLE):
+                        if buffer_arr[i, p].max() > 0:
+                            h36m_buffer[i, p] = mediapipe_to_h36m(buffer_arr[i, p])
+                
+                all_3d = pipeline.lifter.lift_multiperson_sequence(h36m_buffer, out_w, out_h)
+                keypoints_3d = all_3d[-1]
+            else:
+                keypoints_3d = np.zeros((MAX_PEOPLE, 17, 3), dtype=np.float32)
+            
+            output_frame = render_frame(h36m_2d, keypoints_3d, processed, out_w, out_h, mode=mode)
+            
+            if out:
+                out.write(output_frame)
+            
+            cv2.imshow('Kinemation - 3D Pose Estimation', output_frame)
+            frame_count += 1
+            
+            elapsed = (cv2.getTickCount() - start_time) / cv2.getTickFrequency()
+            if duration and elapsed >= duration:
+                break
+            
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    
+    finally:
+        cap.release()
+        if out:
+            out.release()
+        cv2.destroyAllWindows()
+        pipeline.close()
+    
+    return {"success": True, "frames_processed": frame_count, "output_path": output_path}
+
+
 def main():
     parser = argparse.ArgumentParser(description='3D Pose Estimation Pipeline')
-    parser.add_argument('--input', '-i', required=True, help='Input video path')
+    parser.add_argument('--input', '-i', help='Input video path (use "webcam" for live feed)')
     parser.add_argument('--output', '-o', required=True, help='Output video path')
     parser.add_argument('--mode', '-m', choices=['skeleton', 'side_by_side'], default='side_by_side', help='Render mode')
     parser.add_argument('--smoothing', '-s', type=float, default=2.0, help='Temporal smoothing sigma')
     parser.add_argument('--export-npy', action='store_true', help='Export 3D keypoints to NPY file')
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu', help='Device for VideoPose3D')
+    parser.add_argument('--duration', '-d', type=float, help='Webcam recording duration in seconds')
     
     args = parser.parse_args()
     
-    if not os.path.isfile(args.input):
-        print(f"Error: Input file not found: {args.input}")
+    if args.input and args.input.lower() == 'webcam':
+        result = process_webcam(args.output, args.duration, args.mode, args.device)
+    elif args.input:
+        result = process_video_file(args.input, args.output, args.mode, args.smoothing, args.export_npy, args.device)
+    else:
+        print("Error: --input is required (use video path or 'webcam')")
         sys.exit(1)
     
-    pipeline = PoseEstimationPipeline(device=args.device)
-    
-    try:
-        pipeline.process_video(
-            video_path=args.input,
-            output_path=args.output,
-            smoothing_sigma=args.smoothing,
-            render_mode=args.mode,
-            export_npy=args.export_npy
-        )
-    finally:
-        pipeline.close()
-    
-    print("\nDone!")
+    if result["success"]:
+        print("\nDone!")
+    else:
+        print(f"\nError: {result['error']}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

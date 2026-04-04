@@ -1,7 +1,15 @@
 """3D pose visualization module"""
 
+import os
+import sys
 import cv2
 import numpy as np
+
+# Ensure this module's directory is on sys.path for sibling imports
+_this_dir = os.path.dirname(os.path.abspath(__file__))
+if _this_dir not in sys.path:
+    sys.path.insert(0, _this_dir)
+
 from mediapipe_to_h36m import H36M_CONNECTIONS
 
 PERSON_COLORS = [
