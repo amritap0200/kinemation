@@ -19,13 +19,13 @@
             overflow-x: hidden;
         }
         
-                .page {
+        .page {
             position: relative;
             min-height: 100vh;
             width: 100%;
         }
         
-                .mesh-bg {
+        .mesh-bg {
             position: fixed;
             bottom: 0;
             left: 0;
@@ -39,7 +39,7 @@
             pointer-events: none;
         }
         
-                .github-link {
+        .github-link {
             position: fixed;
             top: 24px;
             right: 32px;
@@ -56,7 +56,7 @@
             filter: brightness(0) invert(1);
         }
         
-                .content {
+        .content {
             position: relative;
             z-index: 10;
             display: flex;
@@ -67,7 +67,7 @@
             min-height: 100vh;
         }
         
-                .logo {
+        .logo {
             margin-bottom: 40px;
         }
         .logo img {
@@ -75,7 +75,7 @@
             height: auto;
         }
         
-                .description {
+        .description {
             font-size: 18px;
             color: #FFFFFF;
             text-align: center;
@@ -86,14 +86,14 @@
             font-weight: 400;
         }
         
-                .buttons {
+        .buttons {
             display: flex;
             gap: 32px;
             justify-content: center;
             align-items: center;
         }
         
-                .btn {
+        .btn {
             position: relative;
             display: inline-flex;
             align-items: center;
@@ -111,7 +111,7 @@
             border: none;
         }
         
-                .btn::before {
+        .btn::before {
             content: '';
             position: absolute;
             inset: 0;
@@ -127,7 +127,7 @@
             mask-composite: exclude;
         }
         
-                .btn-webcam::before {
+        .btn-webcam::before {
             background: linear-gradient(90deg, #4169E1 0%, #00D4FF 100%);
         }
         .btn-webcam:hover {
@@ -135,7 +135,7 @@
             box-shadow: 0 10px 40px rgba(0, 212, 255, 0.3);
         }
         
-                .btn-upload::before {
+        .btn-upload::before {
             background: linear-gradient(90deg, #FF1CF7 0%, #9945FF 100%);
         }
         .btn-upload:hover {
@@ -146,18 +146,18 @@
 </head>
 <body>
     <div class="page">
-                <div class="mesh-bg"></div>
+        <div class="mesh-bg"></div>
         
-                <a href="https://github.com/acmpesuecc/kinemation" target="_blank" class="github-link">
+        <a href="https://github.com/acmpesuecc/kinemation" target="_blank" class="github-link">
             <img src="/assets/mdi_github.png" alt="GitHub">
         </a>
         
-                <div class="content">
-                        <div class="logo">
+        <div class="content">
+            <div class="logo">
                 <img src="/assets/Kinemation.png" alt="Kinemation">
             </div>
             
-                        <p class="description">
+            <p class="description">
                 Kinemation is an integrated 3D human pose estimation system that
                 transforms video into accurate, multi-person
                 skeletal data. It combines cutting-edge 2D detection with temporal
@@ -165,7 +165,7 @@
                 tracking across entire videos.
             </p>
             
-                        <div class="buttons">
+            <div class="buttons">
                 <a href="/webcam" class="btn btn-webcam">Webcam</a>
                 <a href="/upload" class="btn btn-upload">Upload</a>
             </div>

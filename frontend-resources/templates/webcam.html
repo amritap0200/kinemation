@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam - Kinemation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+            background-color: #000000;
+            color: #FFFFFF;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 48px;
+        }
+        .back-btn {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px 24px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .back-btn:hover {
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+        }
+        .page-title {
+            font-size: 32px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #00F0FF 0%, #4169E1 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .spacer { width: 100px; }
+        
+        .preview-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .preview-container.active {
+            border-color: #00F0FF;
+        }
+        .preview-container.recording {
+            border-color: #EF4444;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { border-color: #EF4444; }
+            50% { border-color: rgba(239, 68, 68, 0.4); }
+        }
+        #videoPreview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .preview-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.4);
+        }
+        .preview-icon { font-size: 72px; margin-bottom: 16px; }
+        .preview-text { font-size: 18px; margin-bottom: 8px; }
+        .preview-subtext { font-size: 14px; color: rgba(255,255,255,0.3); }
+        
+        .recording-indicator {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(239, 68, 68, 0.9);
+            border-radius: 8px;
+        }
+        .recording-indicator.active { display: flex; }
+        .rec-dot {
+            width: 10px;
+            height: 10px;
+            background: #FFFFFF;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .rec-time { font-family: 'Consolas', monospace; font-size: 14px; }
+        
+        .controls {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .ctrl-btn {
+            background: transparent;
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 14px 32px;
+            font-size: 16px;
+            font-family: Calibri, sans-serif;
+            color: #FFFFFF;
+            cursor: pointer;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+        }
+        .ctrl-btn:hover {
+            border-color: #00F0FF;
+            color: #00F0FF;
+        }
+        
+        .record-btn {
+            border-color: #EF4444;
+            color: #EF4444;
+            padding: 14px 40px;
+        }
+        .record-btn:hover {
+            background: #EF4444;
+            color: #FFFFFF;
+        }
+        
+        .stop-btn {
+            background: #EF4444;
+            border-color: #EF4444;
+            color: #FFFFFF;
+        }
+        .stop-btn:hover {
+            background: #DC2626;
+            border-color: #DC2626;
+        }
+        
+        .process-btn {
+            background: linear-gradient(90deg, #00F0FF 0%, #4169E1 100%);
+            border: none;
+            padding: 16px 48px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #FFFFFF;
+            cursor: pointer;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+        }
+        .process-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 240, 255, 0.3);
+        }
+        .process-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Progress section */
+        .progress-section {
+            margin-top: 32px;
+            padding: 24px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+        }
+        .progress-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #00F0FF;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00F0FF, #4169E1);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        .progress-status {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        .progress-phase {
+            font-size: 14px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 8px;
+        }
+        
+        /* Result section */
+        .result-section {
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 16px;
+            text-align: center;
+        }
+        .result-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #10B981;
+            margin-bottom: 16px;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 12px 36px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #FFFFFF;
+            background: linear-gradient(90deg, #10B981, #059669);
+            border: none;
+            border-radius: 50px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+        }
+        
+        /* Error section */
+        .error-section {
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 16px;
+            text-align: center;
+        }
+        .error-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #EF4444;
+            margin-bottom: 8px;
+        }
+        .error-detail {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn">← Back to Home</a>
+            <h1 class="page-title">Record with Webcam</h1>
+            <div class="spacer"></div>
+        </div>
+        
+        <div id="webcamSection">
+            <div class="preview-container" id="previewContainer">
+                <video id="videoPreview" autoplay muted playsinline class="hidden"></video>
+                <div class="preview-placeholder" id="placeholder">
+                    <div class="preview-icon">🎥</div>
+                    <div class="preview-text">Camera preview will appear here</div>
+                    <div class="preview-subtext">Click "Start Camera" to begin</div>
+                </div>
+                <div class="recording-indicator" id="recIndicator">
+                    <div class="rec-dot"></div>
+                    <span class="rec-time" id="recTime">REC 00:00</span>
+                </div>
+            </div>
+            
+            <div class="controls" id="controls">
+                <button class="ctrl-btn" id="startCameraBtn">📷 Start Camera</button>
+                <button class="record-btn hidden" id="startRecordBtn">⏺ Start Recording</button>
+                <button class="stop-btn hidden" id="stopRecordBtn">⏹ Stop Recording</button>
+                <button class="ctrl-btn hidden" id="retakeBtn">🔄 Record Again</button>
+                <button class="process-btn hidden" id="processBtn">Process Recording</button>
+            </div>
+        </div>
+        
+        <div class="progress-section hidden" id="progressSection">
+            <div class="progress-title">Processing Recording...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-status" id="progressStatus">Uploading recording...</div>
+            <div class="progress-phase" id="progressPhase"></div>
+        </div>
+        
+        <div class="result-section hidden" id="resultSection">
+            <div class="result-title">✓ Processing Complete!</div>
+            <a class="download-btn" id="downloadBtn" href="#">Download Result</a>
+        </div>
+        
+        <div class="error-section hidden" id="errorSection">
+            <div class="error-title">Processing Failed</div>
+            <div class="error-detail" id="errorDetail"></div>
+        </div>
+    </div>
+    
+    <script>
+        const video = document.getElementById('videoPreview');
+        const placeholder = document.getElementById('placeholder');
+        const previewContainer = document.getElementById('previewContainer');
+        const recIndicator = document.getElementById('recIndicator');
+        const recTime = document.getElementById('recTime');
+        const startCameraBtn = document.getElementById('startCameraBtn');
+        const startRecordBtn = document.getElementById('startRecordBtn');
+        const stopRecordBtn = document.getElementById('stopRecordBtn');
+        const retakeBtn = document.getElementById('retakeBtn');
+        const processBtn = document.getElementById('processBtn');
+        const webcamSection = document.getElementById('webcamSection');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressPhase = document.getElementById('progressPhase');
+        const resultSection = document.getElementById('resultSection');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const errorSection = document.getElementById('errorSection');
+        const errorDetail = document.getElementById('errorDetail');
+        
+        let stream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordingTimer = null;
+        let recordingSeconds = 0;
+        let recordedBlob = null;
+        
+        startCameraBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                    audio: false  // No audio needed for pose estimation
+                });
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+                previewContainer.classList.add('active');
+                
+                startCameraBtn.classList.add('hidden');
+                startRecordBtn.classList.remove('hidden');
+            } catch (err) {
+                alert('Could not access camera: ' + err.message);
+            }
+        });
+        
+        startRecordBtn.addEventListener('click', () => {
+            recordedChunks = [];
+            recordedBlob = null;
+            
+            // Use webm format for recording
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+                ? 'video/webm;codecs=vp9' 
+                : 'video/webm';
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+            mediaRecorder.onstop = () => {
+                recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
+            };
+            mediaRecorder.start(100); // Collect data every 100ms
+            
+            previewContainer.classList.remove('active');
+            previewContainer.classList.add('recording');
+            recIndicator.classList.add('active');
+            
+            recordingSeconds = 0;
+            updateRecordingTime();
+            recordingTimer = setInterval(() => {
+                recordingSeconds++;
+                updateRecordingTime();
+            }, 1000);
+            
+            startRecordBtn.classList.add('hidden');
+            stopRecordBtn.classList.remove('hidden');
+        });
+        
+        stopRecordBtn.addEventListener('click', () => {
+            mediaRecorder.stop();
+            clearInterval(recordingTimer);
+            
+            previewContainer.classList.remove('recording');
+            recIndicator.classList.remove('active');
+            
+            stopRecordBtn.classList.add('hidden');
+            retakeBtn.classList.remove('hidden');
+            processBtn.classList.remove('hidden');
+        });
+        
+        retakeBtn.addEventListener('click', () => {
+            recordedBlob = null;
+            recordedChunks = [];
+            retakeBtn.classList.add('hidden');
+            processBtn.classList.add('hidden');
+            startRecordBtn.classList.remove('hidden');
+            previewContainer.classList.add('active');
+        });
+        
+        processBtn.addEventListener('click', async () => {
+            if (!recordedBlob) {
+                alert('No recording available. Please record first.');
+                return;
+            }
+            
+            // Stop the camera stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Show progress, hide webcam section
+            webcamSection.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            resultSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            
+            try {
+                // Upload the recording
+                progressStatus.textContent = 'Uploading recording...';
+                progressBar.style.width = '5%';
+                
+                const formData = new FormData();
+                const filename = `webcam_${Date.now()}.webm`;
+                formData.append('video', recordedBlob, filename);
+                
+                const uploadResponse = await fetch('/api/webcam', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const uploadResult = await uploadResponse.json();
+                
+                if (!uploadResult.success) {
+                    showError(uploadResult.error || 'Upload failed');
+                    return;
+                }
+                
+                // Start polling for status
+                const jobId = uploadResult.job_id;
+                progressStatus.textContent = 'Processing started...';
+                progressBar.style.width = '10%';
+                
+                pollStatus(jobId);
+                
+            } catch (err) {
+                showError('Network error: ' + err.message);
+            }
+        });
+        
+        function pollStatus(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/status/${jobId}`);
+                    const status = await response.json();
+                    
+                    if (status.status === 'processing') {
+                        const progress = status.progress || 0;
+                        progressBar.style.width = (10 + progress * 85) + '%';
+                        progressStatus.textContent = status.message || 'Processing...';
+                        if (status.phase) {
+                            progressPhase.textContent = status.phase;
+                        }
+                    } else if (status.status === 'completed') {
+                        clearInterval(interval);
+                        progressBar.style.width = '100%';
+                        progressStatus.textContent = 'Done!';
+                        
+                        setTimeout(() => {
+                            progressSection.classList.add('hidden');
+                            resultSection.classList.remove('hidden');
+                            downloadBtn.href = `/api/download/${status.output_filename}`;
+                            downloadBtn.download = status.output_filename;
+                        }, 500);
+                    } else if (status.status === 'failed') {
+                        clearInterval(interval);
+                        showError(status.error || 'Processing failed');
+                    }
+                } catch (err) {
+                    clearInterval(interval);
+                    showError('Lost connection to server');
+                }
+            }, 2000);
+        }
+        
+        function showError(message) {
+            progressSection.classList.add('hidden');
+            errorSection.classList.remove('hidden');
+            errorDetail.textContent = message;
+        }
+        
+        function updateRecordingTime() {
+            const mins = Math.floor(recordingSeconds / 60).toString().padStart(2, '0');
+            const secs = (recordingSeconds % 60).toString().padStart(2, '0');
+            recTime.textContent = `REC ${mins}:${secs}`;
+        }
+    </script>
+</body>
+</html>
