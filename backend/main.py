@@ -704,13 +704,20 @@ def draw_skeleton_3d(canvas, keypoints_3d, keypoints_2d, color):
 
 
 # Render a frame with 2D and/or 3D poses
-def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame, video_width, video_height, mode='side_by_side', tracked_mask=None):
+def hex_to_bgr(hex_color):
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return (b, g, r)
+
+
+def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame, video_width, video_height, mode='side_by_side', bg_color='#000000', use_video_bg=False):
     h, w = original_frame.shape[:2]
     max_people = keypoints_2d_all.shape[0]
+    bg_bgr = hex_to_bgr(bg_color)
     
     if mode == 'side_by_side':
         left = original_frame.copy()
-        right = np.zeros((h, w, 3), dtype=np.uint8)
+        right = np.full((h, w, 3), bg_bgr, dtype=np.uint8)
         
         for p in range(max_people):
             has_2d = keypoints_2d_all[p].max() > 0
@@ -728,8 +735,23 @@ def render_frame(keypoints_2d_all, keypoints_3d_all, original_frame, video_width
         cv2.putText(right, "3D Pose", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         
         return np.hstack([left, right])
-    else:
-        canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    
+    elif mode == '2d_only':
+        if use_video_bg:
+            canvas = original_frame.copy()
+        else:
+            canvas = np.full((h, w, 3), bg_bgr, dtype=np.uint8)
+        
+        for p in range(max_people):
+            has_2d = keypoints_2d_all[p].max() > 0
+            if has_2d:
+                color = PERSON_COLORS[p % len(PERSON_COLORS)]
+                canvas = draw_skeleton_2d(canvas, keypoints_2d_all[p], color)
+        
+        return canvas
+    
+    else:  # 3d_only or skeleton
+        canvas = np.full((h, w, 3), bg_bgr, dtype=np.uint8)
         
         for p in range(max_people):
             has_2d = keypoints_2d_all[p].max() > 0
@@ -779,7 +801,7 @@ class PoseEstimationPipeline:
         self.lifter = VideoPose3DLifter(videopose_path, device=device)
         print("Models loaded!")
     
-    def process_video(self, video_path, output_path, smoothing_sigma=2, render_mode='side_by_side', export_npy=False, show_progress=True, progress_callback=None):
+    def process_video(self, video_path, output_path, smoothing_sigma=2, render_mode='side_by_side', export_npy=False, show_progress=True, progress_callback=None, bg_color='#000000', use_video_bg=False):
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             print(f"Error: Cannot open video: {video_path}")
@@ -892,7 +914,8 @@ class PoseEstimationPipeline:
             output_frame = render_frame(
                 all_h36m_2d_smooth[frame_idx],
                 all_3d_keypoints[frame_idx],
-                processed, out_w, out_h, mode=render_mode
+                processed, out_w, out_h, mode=render_mode,
+                bg_color=bg_color, use_video_bg=use_video_bg
             )
             
             out.write(output_frame)
@@ -917,7 +940,7 @@ class PoseEstimationPipeline:
 
 
 # Process video file and return results (API function)
-def process_video_file(input_path, output_path, mode='side_by_side', smoothing=2.0, export_npy=False, device='cpu'):
+def process_video_file(input_path, output_path, mode='side_by_side', smoothing=2.0, export_npy=False, device='cpu', bg_color='#000000', use_video_bg=False):
     if not os.path.isfile(input_path):
         return {"success": False, "error": f"Input file not found: {input_path}"}
     
@@ -928,7 +951,9 @@ def process_video_file(input_path, output_path, mode='side_by_side', smoothing=2
             output_path=output_path,
             smoothing_sigma=smoothing,
             render_mode=mode,
-            export_npy=export_npy
+            export_npy=export_npy,
+            bg_color=bg_color,
+            use_video_bg=use_video_bg
         )
         return {"success": True, "output_path": output_path}
     except Exception as e:
@@ -938,7 +963,7 @@ def process_video_file(input_path, output_path, mode='side_by_side', smoothing=2
 
 
 # Process webcam stream (live mode)
-def process_webcam(output_path=None, duration=None, mode='side_by_side', device='cpu'):
+def process_webcam(output_path=None, duration=None, mode='side_by_side', device='cpu', bg_color='#000000', use_video_bg=False):
     pipeline = PoseEstimationPipeline(device=device)
     cap = cv2.VideoCapture(0)
     
@@ -946,20 +971,31 @@ def process_webcam(output_path=None, duration=None, mode='side_by_side', device=
         pipeline.close()
         return {"success": False, "error": "Cannot open webcam"}
     
-    fps = 30
+    actual_fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = int(actual_fps) if actual_fps > 0 else 30
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
+    ret, test_frame = cap.read()
+    if not ret:
+        cap.release()
+        pipeline.close()
+        return {"success": False, "error": "Cannot read from webcam"}
+    processed_test = preprocess_frame(test_frame)
+    proc_h, proc_w = processed_test.shape[:2]
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
     out = None
     if output_path:
-        out_w = width * 2 if mode == 'side_by_side' else width
+        out_w = proc_w * 2 if mode == 'side_by_side' else proc_w
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (out_w, height))
+        out = cv2.VideoWriter(output_path, fourcc, fps, (out_w, proc_h))
     
     frame_buffer = []
     buffer_size = RECEPTIVE_FIELD
+    frame_timestamps = []
     
-    print("Starting webcam... Press 'q' to stop")
+    print(f"Starting webcam at {fps} FPS... Press 'q' to stop")
     start_time = cv2.getTickCount()
     frame_count = 0
     
@@ -968,6 +1004,9 @@ def process_webcam(output_path=None, duration=None, mode='side_by_side', device=
             ret, frame = cap.read()
             if not ret:
                 break
+            
+            current_time = cv2.getTickCount()
+            frame_timestamps.append(current_time)
             
             processed = preprocess_frame(frame)
             out_h, out_w = processed.shape[:2]
@@ -1001,7 +1040,7 @@ def process_webcam(output_path=None, duration=None, mode='side_by_side', device=
             else:
                 keypoints_3d = np.zeros((MAX_PEOPLE, 17, 3), dtype=np.float32)
             
-            output_frame = render_frame(h36m_2d, keypoints_3d, processed, out_w, out_h, mode=mode)
+            output_frame = render_frame(h36m_2d, keypoints_3d, processed, out_w, out_h, mode=mode, bg_color=bg_color, use_video_bg=use_video_bg)
             
             if out:
                 out.write(output_frame)
@@ -1020,6 +1059,10 @@ def process_webcam(output_path=None, duration=None, mode='side_by_side', device=
         cap.release()
         if out:
             out.release()
+            if frame_count > 1 and len(frame_timestamps) > 1:
+                total_time = (frame_timestamps[-1] - frame_timestamps[0]) / cv2.getTickFrequency()
+                actual_fps_recorded = frame_count / total_time if total_time > 0 else fps
+                print(f"Recorded {frame_count} frames in {total_time:.1f}s (actual FPS: {actual_fps_recorded:.1f})")
         cv2.destroyAllWindows()
         pipeline.close()
     
@@ -1030,18 +1073,20 @@ def main():
     parser = argparse.ArgumentParser(description='3D Pose Estimation Pipeline')
     parser.add_argument('--input', '-i', help='Input video path (use "webcam" for live feed)')
     parser.add_argument('--output', '-o', required=True, help='Output video path')
-    parser.add_argument('--mode', '-m', choices=['skeleton', 'side_by_side'], default='side_by_side', help='Render mode')
+    parser.add_argument('--mode', '-m', choices=['2d_only', '3d_only', 'side_by_side'], default='side_by_side', help='Render mode')
     parser.add_argument('--smoothing', '-s', type=float, default=2.0, help='Temporal smoothing sigma')
     parser.add_argument('--export-npy', action='store_true', help='Export 3D keypoints to NPY file')
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu', help='Device for VideoPose3D')
     parser.add_argument('--duration', '-d', type=float, help='Webcam recording duration in seconds')
+    parser.add_argument('--bg-color', default='#000000', help='Background color for 3D visualization (hex)')
+    parser.add_argument('--video-bg', action='store_true', help='Use video as background for 2D mode')
     
     args = parser.parse_args()
     
     if args.input and args.input.lower() == 'webcam':
-        result = process_webcam(args.output, args.duration, args.mode, args.device)
+        result = process_webcam(args.output, args.duration, args.mode, args.device, args.bg_color, args.video_bg)
     elif args.input:
-        result = process_video_file(args.input, args.output, args.mode, args.smoothing, args.export_npy, args.device)
+        result = process_video_file(args.input, args.output, args.mode, args.smoothing, args.export_npy, args.device, args.bg_color, args.video_bg)
     else:
         print("Error: --input is required (use video path or 'webcam')")
         sys.exit(1)
