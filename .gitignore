@@ -1,2 +1,14 @@
 .DS_Store
 /frontend_app
+__pycache__/
+*.pyc
+*.pt
+*.npy
+*.bin
+*.task
+VideoPose3D/
+models/
+*.mp4
+/app.py
+/frontend-resources
+/project
