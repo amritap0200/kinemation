@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Video - Kinemation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+            background-color: #000000;
+            color: #FFFFFF;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 48px;
+        }
+        .back-btn {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px 24px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .back-btn:hover {
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+        }
+        .page-title {
+            font-size: 32px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #FF1CF7 0%, #00F0FF 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .spacer { width: 100px; }
+        
+        .drop-zone {
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 16px;
+            padding: 80px 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 32px;
+        }
+        .drop-zone:hover {
+            border-color: #00F0FF;
+            background: rgba(0, 240, 255, 0.05);
+        }
+        .drop-zone.dragover {
+            border-color: #00F0FF;
+            background: rgba(0, 240, 255, 0.1);
+        }
+        .drop-icon { font-size: 56px; margin-bottom: 20px; }
+        .drop-text { font-size: 20px; color: rgba(255,255,255,0.7); margin-bottom: 8px; }
+        .drop-subtext { font-size: 14px; color: rgba(255,255,255,0.4); }
+        
+        .file-input { display: none; }
+        
+        .file-list { margin-bottom: 32px; }
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        .file-name { font-size: 16px; }
+        .file-status { color: #10B981; }
+        
+        .options-panel {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+        .options-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: rgba(255,255,255,0.9);
+        }
+        .option-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .option-row:last-child { margin-bottom: 0; }
+        .option-label {
+            width: 140px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+        }
+        .option-select {
+            flex: 1;
+            max-width: 300px;
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .option-select:focus {
+            outline: none;
+            border-color: #00F0FF;
+        }
+        .option-select option {
+            background: #1a1a1a;
+            color: #FFFFFF;
+        }
+        
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .color-preview input[type="color"] {
+            position: absolute;
+            width: 150%;
+            height: 150%;
+            top: -25%;
+            left: -25%;
+            cursor: pointer;
+            border: none;
+        }
+        .color-hex {
+            width: 100px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-size: 14px;
+            font-family: 'Consolas', monospace;
+        }
+        .color-hex:focus {
+            outline: none;
+            border-color: #00F0FF;
+        }
+        
+        .toggle-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .toggle {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle.active {
+            background: linear-gradient(90deg, #FF1CF7, #00F0FF);
+        }
+        .toggle-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #FFFFFF;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle.active .toggle-knob {
+            transform: translateX(22px);
+        }
+        .toggle-label {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        
+        .process-btn {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+            padding: 16px 48px;
+            font-size: 16px;
+            font-family: Calibri, sans-serif;
+            font-weight: 600;
+            color: #000000;
+            background: linear-gradient(90deg, #FF1CF7 0%, #00F0FF 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .process-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 240, 255, 0.3);
+        }
+        .process-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-section {
+            margin-top: 32px;
+            padding: 24px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+        }
+        .progress-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #00F0FF;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #FF1CF7, #00F0FF);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        .progress-status {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        .progress-phase {
+            font-size: 14px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 8px;
+        }
+        
+        .result-section {
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 16px;
+            text-align: center;
+        }
+        .result-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #10B981;
+            margin-bottom: 16px;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 12px 36px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #FFFFFF;
+            background: linear-gradient(90deg, #10B981, #059669);
+            border: none;
+            border-radius: 50px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+        }
+        
+        .error-section {
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 16px;
+            text-align: center;
+        }
+        .error-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #EF4444;
+            margin-bottom: 8px;
+        }
+        .error-detail {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+        }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn">← Back to Home</a>
+            <h1 class="page-title">Upload Video</h1>
+            <div class="spacer"></div>
+        </div>
+        
+        <div id="uploadSection">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-icon">📁</div>
+                <div class="drop-text">Drag and drop video files here</div>
+                <div class="drop-subtext">or click to browse · Supports MP4, AVI, MOV, MKV</div>
+            </div>
+            <input type="file" class="file-input" id="fileInput" accept=".mp4,.avi,.mov,.mkv">
+            
+            <div class="file-list hidden" id="fileList"></div>
+            
+            <div class="options-panel hidden" id="optionsPanel">
+                <div class="options-title">Processing Options</div>
+                
+                <div class="option-row">
+                    <span class="option-label">Output Mode</span>
+                    <select class="option-select" id="modeSelect">
+                        <option value="side_by_side">Side by Side (2D + 3D)</option>
+                        <option value="2d_only">2D Pose Only</option>
+                        <option value="3d_only">3D Pose Only</option>
+                    </select>
+                </div>
+                
+                <div class="option-row" id="bgColorRow">
+                    <span class="option-label">Background Color</span>
+                    <div class="color-picker-wrapper">
+                        <div class="color-preview" id="colorPreview" style="background: #000000;">
+                            <input type="color" id="bgColorPicker" value="#000000">
+                        </div>
+                        <input type="text" class="color-hex" id="bgColorHex" value="#000000" maxlength="7">
+                    </div>
+                </div>
+                
+                <div class="option-row hidden" id="videoBgRow">
+                    <span class="option-label">Video Background</span>
+                    <div class="toggle-wrapper">
+                        <div class="toggle" id="videoBgToggle">
+                            <div class="toggle-knob"></div>
+                        </div>
+                        <span class="toggle-label">Use original video as background</span>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="process-btn hidden" id="processBtn" disabled>Process Video</button>
+        </div>
+        
+        <div class="progress-section hidden" id="progressSection">
+            <div class="progress-title">Processing Video...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-status" id="progressStatus">Uploading video...</div>
+            <div class="progress-phase" id="progressPhase"></div>
+        </div>
+        
+        <div class="result-section hidden" id="resultSection">
+            <div class="result-title">✓ Processing Complete!</div>
+            <a class="download-btn" id="downloadBtn" href="#">Download Result</a>
+        </div>
+        
+        <div class="error-section hidden" id="errorSection">
+            <div class="error-title">Processing Failed</div>
+            <div class="error-detail" id="errorDetail"></div>
+        </div>
+    </div>
+    
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const optionsPanel = document.getElementById('optionsPanel');
+        const processBtn = document.getElementById('processBtn');
+        const uploadSection = document.getElementById('uploadSection');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressPhase = document.getElementById('progressPhase');
+        const resultSection = document.getElementById('resultSection');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const errorSection = document.getElementById('errorSection');
+        const errorDetail = document.getElementById('errorDetail');
+        
+        const modeSelect = document.getElementById('modeSelect');
+        const bgColorPicker = document.getElementById('bgColorPicker');
+        const bgColorHex = document.getElementById('bgColorHex');
+        const colorPreview = document.getElementById('colorPreview');
+        const bgColorRow = document.getElementById('bgColorRow');
+        const videoBgRow = document.getElementById('videoBgRow');
+        const videoBgToggle = document.getElementById('videoBgToggle');
+        
+        let selectedFile = null;
+        let useVideoBg = false;
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        function handleFile(file) {
+            const validTypes = ['.mp4', '.avi', '.mov', '.mkv'];
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            if (!validTypes.includes(ext)) {
+                alert('Unsupported file type. Please use MP4, AVI, MOV, or MKV.');
+                return;
+            }
+            selectedFile = file;
+            updateFileList();
+        }
+        
+        function updateFileList() {
+            if (selectedFile) {
+                fileList.classList.remove('hidden');
+                optionsPanel.classList.remove('hidden');
+                processBtn.classList.remove('hidden');
+                processBtn.disabled = false;
+                
+                const sizeMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
+                fileList.innerHTML = `
+                    <div class="file-item">
+                        <span class="file-name">🎬 ${selectedFile.name} (${sizeMB} MB)</span>
+                        <span class="file-status">✔ Ready</span>
+                    </div>
+                `;
+            }
+        }
+        
+        modeSelect.addEventListener('change', () => {
+            const mode = modeSelect.value;
+            if (mode === '2d_only') {
+                videoBgRow.classList.remove('hidden');
+                bgColorRow.classList.toggle('hidden', useVideoBg);
+            } else {
+                videoBgRow.classList.add('hidden');
+                bgColorRow.classList.remove('hidden');
+                useVideoBg = false;
+                videoBgToggle.classList.remove('active');
+            }
+        });
+        
+        videoBgToggle.addEventListener('click', () => {
+            useVideoBg = !useVideoBg;
+            videoBgToggle.classList.toggle('active', useVideoBg);
+            bgColorRow.classList.toggle('hidden', useVideoBg);
+        });
+        
+        bgColorPicker.addEventListener('input', (e) => {
+            const color = e.target.value;
+            bgColorHex.value = color;
+            colorPreview.style.background = color;
+        });
+        
+        bgColorHex.addEventListener('input', (e) => {
+            let color = e.target.value;
+            if (!color.startsWith('#')) color = '#' + color;
+            if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                bgColorPicker.value = color;
+                colorPreview.style.background = color;
+            }
+        });
+        
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            uploadSection.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            resultSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            
+            try {
+                progressStatus.textContent = 'Uploading video...';
+                progressBar.style.width = '5%';
+                
+                const formData = new FormData();
+                formData.append('video', selectedFile);
+                formData.append('mode', modeSelect.value);
+                formData.append('bg_color', bgColorHex.value);
+                formData.append('use_video_bg', useVideoBg.toString());
+                
+                const uploadResponse = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const uploadResult = await uploadResponse.json();
+                
+                if (!uploadResult.success) {
+                    showError(uploadResult.error || 'Upload failed');
+                    return;
+                }
+                
+                const jobId = uploadResult.job_id;
+                progressStatus.textContent = 'Processing started...';
+                progressBar.style.width = '10%';
+                
+                pollStatus(jobId);
+                
+            } catch (err) {
+                showError('Network error: ' + err.message);
+            }
+        });
+        
+        function pollStatus(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/status/${jobId}`);
+                    const status = await response.json();
+                    
+                    if (status.status === 'processing') {
+                        const progress = status.progress || 0;
+                        progressBar.style.width = (10 + progress * 85) + '%';
+                        progressStatus.textContent = status.message || 'Processing...';
+                        if (status.phase) {
+                            progressPhase.textContent = status.phase;
+                        }
+                    } else if (status.status === 'completed') {
+                        clearInterval(interval);
+                        progressBar.style.width = '100%';
+                        progressStatus.textContent = 'Done!';
+                        
+                        setTimeout(() => {
+                            progressSection.classList.add('hidden');
+                            resultSection.classList.remove('hidden');
+                            downloadBtn.href = `/api/download/${status.output_filename}`;
+                            downloadBtn.download = status.output_filename;
+                        }, 500);
+                    } else if (status.status === 'failed') {
+                        clearInterval(interval);
+                        showError(status.error || 'Processing failed');
+                    }
+                } catch (err) {
+                    clearInterval(interval);
+                    showError('Lost connection to server');
+                }
+            }, 2000);
+        }
+        
+        function showError(message) {
+            progressSection.classList.add('hidden');
+            errorSection.classList.remove('hidden');
+            errorDetail.textContent = message;
+        }
+    </script>
+</body>
+</html>

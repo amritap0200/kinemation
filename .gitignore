@@ -1,4 +1,5 @@
 .DS_Store
+/frontend_app
 __pycache__/
 *.pyc
 *.pt
